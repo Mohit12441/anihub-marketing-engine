@@ -42,10 +42,16 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Setup Deno (yt-dlp JS Challenge Solver)
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install Dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+          mkdir -p output
 
       # Persist SQLite post history database across runs
       - name: Restore Post History Cache
