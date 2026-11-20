@@ -17,22 +17,46 @@ def _format_ass_time(seconds: float) -> str:
 
 class CaptionAnimator:
     """
-    Generates TikTok / Instagram Reels styled dynamic word-by-word highlighted captions
+    Generates TikTok / Instagram Reels styled dynamic bouncing karaoke captions
     in ASS (Advanced SubStation Alpha) format for direct burning onto video streams.
+    Features:
+    - Word-by-word reveal with active word scaling and color burst
+    - Bold fonts with heavy outline for 100% legibility on high-action scenes
+    - Configurable color styles: 'pop' (yellow), 'beast' (neon green), 'fire' (coral/orange)
     """
+
+    STYLES = {
+        "pop": {
+            "active_color": "&H00D7FF&",    # Vibrant TikTok Yellow
+            "inactive_color": "&H00FFFFFF&" # Crisp White
+        },
+        "beast": {
+            "active_color": "&H0055FF00&",  # Neon Slime Green
+            "inactive_color": "&H00FFFFFF&"
+        },
+        "fire": {
+            "active_color": "&H002288FF&",   # Fiery Orange / Coral
+            "inactive_color": "&H00FFFFFF&"
+        }
+    }
 
     @classmethod
     def generate_ass_subtitles(
         cls,
         cues: List[Dict[str, Any]],
         output_file: Path,
+        style_preset: str = "pop",
         font_name: str = "Arial",
-        font_size: int = 34
+        font_size: int = 38
     ) -> Path:
         """
-        Creates an ASS subtitle file with bold white text, black outline,
-        and vibrant yellow active-word highlights (&H0000FFFF) matching TikTok reels.
+        Creates an ASS subtitle file with bold uppercase text, black outline,
+        and animated bounce-in + vibrant color highlight on each active spoken word.
         """
+        palette = cls.STYLES.get(style_preset, cls.STYLES["pop"])
+        active_col = palette["active_color"]
+        inactive_col = palette["inactive_color"]
+
         header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -41,7 +65,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: TikTokPop, {font_name}, {font_size}, &H00FFFFFF, &H000000FF, &H00000000, &H80000000, 1, 0, 0, 0, 100, 100, 1, 0, 1, 4.5, 2.0, 2, 40, 40, 460, 1
+Style: TikTokReels, {font_name}, {font_size}, &H00FFFFFF, &H000000FF, &H00000000, &H80000000, 1, 0, 0, 0, 100, 100, 1, 0, 1, 5.0, 2.5, 2, 40, 40, 480, 1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -63,32 +87,32 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
             word_duration = duration / len(words)
 
-            # Generate word-by-word highlighted lines
+            # Generate word-by-word bouncing lines
             for i, target_word in enumerate(words):
                 w_start = start_t + (i * word_duration)
                 w_end = w_start + word_duration
-                
-                # Format current sentence with target word highlighted in bright yellow
+
                 colored_words = []
                 for j, w in enumerate(words):
                     clean_w = re.sub(r'[^\w\s\'-]', '', w).upper()
                     if j == i:
-                        # Yellow highlight with slight scale emphasis
-                        colored_words.append(f"{{\\c&H00D7FF&\\b1}}{clean_w}{{\\c&HFFFFFF&\\b1}}")
+                        # Bouncing pop scale: pops to 125% then settles to 100% with bright highlight
+                        bounce_tag = "{\\t(0,90,\\fscx125\\fscy125)\\t(90,180,\\fscx100\\fscy100)"
+                        colored_words.append(f"{bounce_tag}\\c{active_col}\\b1}}{clean_w}{{\\c{inactive_col}\\b1}}")
                     else:
-                        colored_words.append(f"{{\\c&HFFFFFF&\\b1}}{clean_w}{{\\c&HFFFFFF&\\b1}}")
+                        colored_words.append(f"{{\\c{inactive_col}\\b1}}{clean_w}{{\\c{inactive_col}\\b1}}")
 
                 formatted_text = " ".join(colored_words)
                 start_str = _format_ass_time(w_start)
                 end_str = _format_ass_time(w_end)
 
                 dialogue_lines.append(
-                    f"Dialogue: 0,{start_str},{end_str},TikTokPop,,0,0,0,,{formatted_text}"
+                    f"Dialogue: 0,{start_str},{end_str},TikTokReels,,0,0,0,,{formatted_text}"
                 )
 
         output_file.parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
             f.write(header + "\n".join(dialogue_lines) + "\n")
 
-        logger.info(f"Generated TikTok animated ASS captions file: {output_file}")
+        logger.info(f"Generated TikTok bouncing ASS captions file ({style_preset}): {output_file}")
         return output_file

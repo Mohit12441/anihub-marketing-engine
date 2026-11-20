@@ -4,10 +4,11 @@ import shutil
 import logging
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
 from ..config import Config
 from .caption_animator import CaptionAnimator
+from ..extractors.viral_timeline import ViralTimelineDetector
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,12 @@ def _get_font(size: int, bold: bool = False):
 class ClipEditor:
     """
     Transforms widescreen anime clips into viral 9:16 vertical video reels (1080x1920)
-    with ambient motion blur background, crystal-clear audio, and high-conversion branding.
+    with:
+    - Ambient motion blurred 9:16 background
+    - Dynamic Punch-in zoom (+12% scale) on climax hits
+    - Impact Frames (2-frame inverted sakuga flash at peak audio spike)
+    - TikTok word-by-word bouncing karaoke subtitles
+    - High-conversion header & footer CTA overlays
     """
 
     WIDTH = 1080
@@ -67,8 +73,8 @@ class ClipEditor:
         font_sub = _get_font(26, bold=False)
 
         # 1. Top Header Banner
-        draw.rectangle([(0, 0), (cls.WIDTH, 320)], fill=(10, 12, 18, 230))
-        draw.line([(0, 320), (cls.WIDTH, 320)], fill=(255, 62, 62, 255), width=3)
+        draw.rectangle([(0, 0), (cls.WIDTH, 320)], fill=(10, 12, 18, 235))
+        draw.line([(0, 320), (cls.WIDTH, 320)], fill=(255, 62, 62, 255), width=4)
 
         # Top pill badge
         badge_text = "TRENDING ANIME MOMENT"
@@ -89,7 +95,7 @@ class ClipEditor:
 
         # 2. Bottom CTA Banner
         draw.rectangle([(0, 1600), (cls.WIDTH, cls.HEIGHT)], fill=(10, 12, 18, 240))
-        draw.line([(0, 1600), (cls.WIDTH, 1600)], fill=(255, 62, 62, 255), width=3)
+        draw.line([(0, 1600), (cls.WIDTH, 1600)], fill=(255, 62, 62, 255), width=4)
 
         cta_sub = "STREAM FULL EPISODES IN 1080P SUB / DUB"
         sub_w = int(draw.textlength(cta_sub, font=font_sub))
@@ -116,7 +122,8 @@ class ClipEditor:
         anime_title: str,
         hook_text: str = "Wait for the animation to peak at the end 😱",
         output_filename: Optional[str] = None,
-        subtitle_cues: Optional[list] = None
+        subtitle_cues: Optional[list] = None,
+        clip_duration: int = 15
     ) -> Path:
         if not raw_clip_path.exists():
             raise FileNotFoundError(f"Input video clip not found at: {raw_clip_path}")
@@ -129,19 +136,30 @@ class ClipEditor:
         overlay_png = cls.create_graphic_overlay(anime_title, hook_text)
         ffmpeg_bin = _get_ffmpeg_path()
 
-        # Dynamic TikTok word-by-word highlighted captions
+        # 1. Detect Audio Energy Peak for Impact Frame & Punch-in Zoom
+        t_peak = ViralTimelineDetector.detect_audio_impact_peak(raw_clip_path)
+        logger.info(f"🎬 Synced Impact Frame & Punch-in Zoom at {t_peak}s")
+
+        # 2. Dynamic TikTok bouncing karaoke subtitles
         ass_path = None
         sub_filter = ""
         if subtitle_cues:
             ass_path = Config.OUTPUT_DIR / f"temp_{safe_title}_captions.ass"
-            CaptionAnimator.generate_ass_subtitles(subtitle_cues, ass_path)
+            CaptionAnimator.generate_ass_subtitles(subtitle_cues, ass_path, style_preset="pop")
             ass_escaped = str(ass_path.resolve()).replace("\\", "/").replace(":", "\\:")
             sub_filter = f",ass='{ass_escaped}'"
 
+        # 3. Dynamic Filter Complex:
+        # - [bg]: 1080x1920 ambient motion blurred background
+        # - [base_fg]: 1080x608 crisp widescreen foreground
+        # - [fg]: Dynamic slow zoom (1.0x -> 1.05x) + Sudden Punch-in (+10% scale) at t_peak + Impact Sakuga negative flash for 0.08s
+        # - [stacked]: Composited with overlay banner & dynamic bouncing captions
         filter_complex = (
             f"[0:v]scale={cls.WIDTH}:{cls.HEIGHT}:force_original_aspect_ratio=increase,"
-            f"crop={cls.WIDTH}:{cls.HEIGHT},boxblur=25:5,eq=brightness=-0.15[bg]; "
-            f"[0:v]scale={cls.WIDTH}:-1[fg]; "
+            f"crop={cls.WIDTH}:{cls.HEIGHT},boxblur=25:5,eq=brightness=-0.18[bg]; "
+            f"[0:v]scale={cls.WIDTH}:608:force_original_aspect_ratio=increase,crop={cls.WIDTH}:608[base_fg]; "
+            f"[base_fg]scale=w='trunc(({cls.WIDTH}*(1+0.05*t/{clip_duration}+if(between(t,{t_peak},{t_peak}+0.35),0.10,0)))/2)*2':h='-2':eval=frame,"
+            f"crop={cls.WIDTH}:608,negate=enable='between(t,{t_peak},{t_peak}+0.08)'[fg]; "
             f"[bg][fg]overlay=0:(1920-h)/2[stacked]; "
             f"[stacked][1:v]overlay=0:0{sub_filter}[outv]"
         )
@@ -156,7 +174,7 @@ class ClipEditor:
             "-map", "0:a?",
             "-c:v", "libx264",
             "-preset", "fast",
-            "-crf", "20",
+            "-crf", "19",
             "-c:a", "aac",
             "-b:a", "192k",
             "-pix_fmt", "yuv420p",
@@ -164,7 +182,7 @@ class ClipEditor:
             str(out_path)
         ]
 
-        logger.info(f"Compositing 9:16 vertical reel with real audio & dynamic subtitles for '{anime_title}'...")
+        logger.info(f"Compositing 9:16 vertical reel with real audio, punch-in zoom, impact frames & dynamic subtitles for '{anime_title}'...")
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if res.returncode != 0:
             logger.error(f"Clip compositing failed: {res.stderr}")

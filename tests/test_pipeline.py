@@ -8,6 +8,10 @@ from src.database.tracker import StateTracker
 from src.generators.copywriter import ContentCopywriter, clean_slug
 from src.generators.graphic_builder import PromoGraphicBuilder
 from src.generators.video_builder import ReelVideoBuilder
+from src.generators.caption_animator import CaptionAnimator
+from src.generators.viral_seo import ViralSEOGenerator
+from src.generators.clip_editor import ClipEditor
+from src.extractors.viral_timeline import ViralTimelineDetector
 
 class TestMarketingPipeline(unittest.TestCase):
     
@@ -76,6 +80,39 @@ class TestMarketingPipeline(unittest.TestCase):
         
         if video_path.exists():
             video_path.unlink()
+
+    def test_viral_timeline_detector(self):
+        segment = ViralTimelineDetector.find_viral_segment("jujutsu-kaisen", duration=15)
+        self.assertEqual(segment["start_sec"], 1050)
+        self.assertEqual(segment["duration"], 15)
+        self.assertTrue(len(segment["subtitles"]) > 0)
+
+    def test_caption_animator_ass(self):
+        cues = [
+            {"start": 0.0, "end": 2.5, "text": "Nobody expected this sudden power-up"},
+            {"start": 2.5, "end": 5.0, "text": "Peak animation cinema"}
+        ]
+        out_ass = Path(self.temp_dir.name) / "test_sub.ass"
+        result_path = CaptionAnimator.generate_ass_subtitles(cues, out_ass, style_preset="pop")
+        self.assertTrue(result_path.exists())
+        content = result_path.read_text(encoding="utf-8")
+        self.assertIn("TikTokReels", content)
+        self.assertIn("&H00D7FF&", content)
+
+    def test_viral_seo_package(self):
+        seo = ViralSEOGenerator.generate_seo_package("Jujutsu Kaisen")
+        self.assertIn("anihubstream.com/watch/jujutsu-kaisen", seo["watch_url"])
+        self.assertIn("Jujutsu Kaisen", seo["title_primary"])
+        self.assertIn("#anime", seo["caption"])
+        self.assertIn("jujutsu kaisen", seo["tags"].lower())
+
+    def test_clip_editor_overlay(self):
+        overlay = ClipEditor.create_graphic_overlay("Solo Leveling", "ARRISE SHADOW MONARCH")
+        self.assertTrue(overlay.exists())
+        with Image.open(overlay) as img:
+            self.assertEqual(img.size, (1080, 1920))
+        if overlay.exists():
+            overlay.unlink()
 
 if __name__ == "__main__":
     unittest.main()

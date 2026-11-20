@@ -157,7 +157,8 @@ def run_clip_pipeline(
         anime_title=anime_name,
         hook_text=hook,
         output_filename=f"viral_short_{safe_slug}.mp4",
-        subtitle_cues=timeline.get("subtitles")
+        subtitle_cues=timeline.get("subtitles"),
+        clip_duration=duration
     )
 
     # 4. Save Comprehensive Viral SEO & Tag Package
