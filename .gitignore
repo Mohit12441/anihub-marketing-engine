@@ -1,0 +1,15 @@
+# Environment variables
+.env
+
+# Database
+*.db
+post_history.db
+
+# Output artifacts
+output/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
