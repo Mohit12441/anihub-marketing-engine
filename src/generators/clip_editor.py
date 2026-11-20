@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from PIL import Image, ImageDraw, ImageFont
 from ..config import Config
+from .caption_animator import CaptionAnimator
 
 logger = logging.getLogger(__name__)
 
@@ -114,30 +115,35 @@ class ClipEditor:
         raw_clip_path: Path,
         anime_title: str,
         hook_text: str = "Wait for the animation to peak at the end 😱",
-        output_filename: Optional[str] = None
+        output_filename: Optional[str] = None,
+        subtitle_cues: Optional[list] = None
     ) -> Path:
         if not raw_clip_path.exists():
             raise FileNotFoundError(f"Input video clip not found at: {raw_clip_path}")
 
+        safe_title = "".join(c for c in anime_title if c.isalnum() or c in ("-", "_")).lower()[:18]
         if not output_filename:
-            safe_title = "".join(c for c in anime_title if c.isalnum() or c in ("-", "_")).lower()[:18]
             output_filename = f"viral_short_{safe_title}.mp4"
 
         out_path = Config.OUTPUT_DIR / output_filename
         overlay_png = cls.create_graphic_overlay(anime_title, hook_text)
         ffmpeg_bin = _get_ffmpeg_path()
 
-        # FFmpeg filter:
-        # [0:v] blurred ambient 1080x1920 background
-        # [0:v] scaled 1080 width foreground in center
-        # [1:v] clean Pillow overlay
-        # -map "[outv]" -map "0:a" keeps original sound!
+        # Dynamic TikTok word-by-word highlighted captions
+        ass_path = None
+        sub_filter = ""
+        if subtitle_cues:
+            ass_path = Config.OUTPUT_DIR / f"temp_{safe_title}_captions.ass"
+            CaptionAnimator.generate_ass_subtitles(subtitle_cues, ass_path)
+            ass_escaped = str(ass_path.resolve()).replace("\\", "/").replace(":", "\\:")
+            sub_filter = f",ass='{ass_escaped}'"
+
         filter_complex = (
             f"[0:v]scale={cls.WIDTH}:{cls.HEIGHT}:force_original_aspect_ratio=increase,"
             f"crop={cls.WIDTH}:{cls.HEIGHT},boxblur=25:5,eq=brightness=-0.15[bg]; "
             f"[0:v]scale={cls.WIDTH}:-1[fg]; "
             f"[bg][fg]overlay=0:(1920-h)/2[stacked]; "
-            f"[stacked][1:v]overlay=0:0[outv]"
+            f"[stacked][1:v]overlay=0:0{sub_filter}[outv]"
         )
 
         cmd = [
@@ -158,15 +164,17 @@ class ClipEditor:
             str(out_path)
         ]
 
-        logger.info(f"Compositing 9:16 vertical reel with real audio for '{anime_title}'...")
+        logger.info(f"Compositing 9:16 vertical reel with real audio & dynamic subtitles for '{anime_title}'...")
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         if res.returncode != 0:
             logger.error(f"Clip compositing failed: {res.stderr}")
             raise RuntimeError(f"FFmpeg compositing error: {res.stderr[:250]}")
 
-        # Clean up temporary overlay PNG
+        # Clean up temporary overlay and subtitle files
         if overlay_png.exists():
             overlay_png.unlink()
+        if ass_path and ass_path.exists():
+            ass_path.unlink()
 
-        logger.info(f"Successfully generated pro vertical reel with audio at: {out_path}")
+        logger.info(f"Successfully generated pro vertical reel with audio & TikTok captions at: {out_path}")
         return out_path

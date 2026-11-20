@@ -22,6 +22,7 @@ from src.generators.video_builder import ReelVideoBuilder
 from src.generators.clip_editor import ClipEditor
 from src.generators.viral_seo import ViralSEOGenerator
 from src.extractors.stream_recorder import StreamRecorder
+from src.extractors.viral_timeline import ViralTimelineDetector
 from src.publishers.instagram import InstagramPublisher
 from src.publishers.twitter import TwitterPublisher
 from src.utils.uploader import upload_public_image
@@ -117,31 +118,46 @@ def run_marketing_pipeline(mode: str = "trending", max_posts: int = 1, platforms
 def run_clip_pipeline(
     anime_name: str,
     stream_url: Optional[str] = None,
-    start_time: str = "00:02:00",
-    duration: int = 20,
+    start_time: Optional[str] = None,
+    duration: int = 15,
     hook_text: Optional[str] = None
 ):
-    logger.info(f"=== Starting Viral Clip & SEO Generation for: '{anime_name}' ===")
+    logger.info(f"=== Starting Viral Climax Clip & SEO Generation for: '{anime_name}' ===")
     
     # 1. Generate SEO & Viral Metadata
     seo_data = ViralSEOGenerator.generate_seo_package(anime_name)
-    hook = hook_text or seo_data["hook"]
-    
-    # 2. Extract Real Anime Video Clip (With Audio & SFX)
     safe_slug = seo_data["slug"]
+
+    # 2. Intelligent Viral Timeline & Climax Detection
+    timeline = ViralTimelineDetector.find_viral_segment(slug=safe_slug, duration=duration)
+    hook = hook_text or timeline.get("hook") or seo_data["hook"]
+    
+    # Use user-specified start if provided, else use detected battle climax timestamp
+    if start_time:
+        effective_start = start_time
+    else:
+        start_sec = timeline.get("start_sec", 960)
+        m = start_sec // 60
+        s = start_sec % 60
+        effective_start = f"00:{m:02d}:{s:02d}"
+
+    logger.info(f"🎯 Target Viral Climax Window: {effective_start} (+{duration}s)")
+    
+    # 3. Extract Real Anime Video Clip from AniHubStream Provider
     clip_source = StreamRecorder.get_real_anime_clip(
         anime_title=anime_name,
         stream_source=stream_url,
-        start_time=start_time,
+        start_time=effective_start,
         duration=duration
     )
 
-    # 3. Apply 9:16 Vertical Video Reframe with Ambient Blur, Clean Overlay & 192k Audio
+    # 4. Apply 9:16 Vertical Video Reframe with Ambient Blur & TikTok Animated Captions
     final_video = ClipEditor.process_vertical_clip(
         raw_clip_path=clip_source,
         anime_title=anime_name,
         hook_text=hook,
-        output_filename=f"viral_short_{safe_slug}.mp4"
+        output_filename=f"viral_short_{safe_slug}.mp4",
+        subtitle_cues=timeline.get("subtitles")
     )
 
     # 4. Save Comprehensive Viral SEO & Tag Package
@@ -176,8 +192,8 @@ def main():
                         help="Anime title for clip mode (default: 'Solo Leveling')")
     parser.add_argument("--stream", type=str, default=None,
                         help="Optional stream or video URL to slice (HLS m3u8 or mp4)")
-    parser.add_argument("--start", type=str, default="00:02:00",
-                        help="Start timestamp for clip slice (default: '00:02:00')")
+    parser.add_argument("--start", type=str, default=None,
+                        help="Optional start timestamp (default: auto-detect viral climax)")
     parser.add_argument("--duration", type=int, default=15,
                         help="Clip duration in seconds (default: 15)")
     parser.add_argument("--hook", type=str, default=None,
