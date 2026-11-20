@@ -2,6 +2,7 @@ import argparse
 import sys
 import logging
 from pathlib import Path
+from typing import Optional
 
 # Setup structured logging
 logging.basicConfig(
@@ -18,6 +19,9 @@ from src.fetchers.jikan import fetch_today_airing_schedule
 from src.generators.copywriter import ContentCopywriter
 from src.generators.graphic_builder import PromoGraphicBuilder
 from src.generators.video_builder import ReelVideoBuilder
+from src.generators.clip_editor import ClipEditor
+from src.generators.viral_seo import ViralSEOGenerator
+from src.extractors.stream_recorder import StreamRecorder
 from src.publishers.instagram import InstagramPublisher
 from src.publishers.twitter import TwitterPublisher
 from src.utils.uploader import upload_public_image
@@ -110,27 +114,104 @@ def run_marketing_pipeline(mode: str = "trending", max_posts: int = 1, platforms
 
     logger.info(f"=== Pipeline Finished. Successfully published {published_count} item(s). ===")
 
+def run_clip_pipeline(
+    anime_name: str,
+    stream_url: Optional[str] = None,
+    start_time: str = "00:02:00",
+    duration: int = 20,
+    hook_text: Optional[str] = None
+):
+    logger.info(f"=== Starting Viral Clip & SEO Generation for: '{anime_name}' ===")
+    
+    # 1. Generate SEO & Viral Metadata
+    seo_data = ViralSEOGenerator.generate_seo_package(anime_name)
+    hook = hook_text or seo_data["hook"]
+    
+    # 2. Extract or Synthesize Raw Clip
+    safe_slug = seo_data["slug"]
+    raw_clip = Config.OUTPUT_DIR / f"raw_{safe_slug}.mp4"
+    
+    if stream_url:
+        logger.info(f"Extracting live stream slice from: {stream_url}")
+        clip_source = StreamRecorder.extract_clip(
+            stream_source=stream_url,
+            start_time=start_time,
+            duration=duration,
+            output_filename=f"raw_{safe_slug}.mp4"
+        )
+    else:
+        logger.info("No stream URL provided. Searching top trending visual to synthesize clip...")
+        candidates = fetch_trending_anime(limit=5)
+        matched = next((c for c in candidates if safe_slug in c["title"].lower()), candidates[0])
+        clip_source = ReelVideoBuilder.generate_reel(
+            matched,
+            badge_text="VIRAL ANIME CLIP",
+            duration=duration,
+            filename=f"raw_{safe_slug}.mp4"
+        )
+
+    # 3. Apply 9:16 Vertical Video Reframe with Ambient Blur & Overlays
+    final_video = ClipEditor.process_vertical_clip(
+        raw_clip_path=clip_source,
+        anime_title=anime_name,
+        hook_text=hook,
+        output_filename=f"viral_short_{safe_slug}.mp4"
+    )
+
+    # 4. Save SEO & Hashtag File
+    seo_file = Config.OUTPUT_DIR / f"seo_{safe_slug}.txt"
+    with open(seo_file, "w", encoding="utf-8") as f:
+        f.write(f"=== YOUTUBE SHORTS / TIKTOK VIRAL PACKAGE ===\n\n")
+        f.write(f"TITLE: {seo_data['title']}\n\n")
+        f.write(f"CAPTION:\n{seo_data['caption']}\n\n")
+        f.write(f"TAGS: {seo_data['tags']}\n\n")
+        f.write(f"WATCH URL: {seo_data['watch_url']}\n")
+
+    logger.info(f"✅ Viral Clip generated: {final_video}")
+    logger.info(f"✅ SEO & Tag package saved: {seo_file}")
+    logger.info(f"\n{seo_data['caption']}")
+    return final_video, seo_file
+
 def main():
     parser = argparse.ArgumentParser(description="AniHub Stream Social Marketing Automation Engine")
-    parser.add_argument("--mode", choices=["trending", "schedule"], default="trending",
-                        help="Content strategy mode: 'trending' or 'schedule'")
+    parser.add_argument("--mode", choices=["trending", "schedule", "clip"], default="trending",
+                        help="Content strategy mode: 'trending', 'schedule', or 'clip'")
     parser.add_argument("--limit", type=int, default=1,
                         help="Number of new anime posts to publish per run (default: 1)")
     parser.add_argument("--platform", choices=["all", "instagram", "twitter"], default="all",
                         help="Target platform(s)")
     parser.add_argument("--dry-run", action="store_true",
                         help="Simulate execution without sending live posts")
+    parser.add_argument("--anime", type=str, default="Solo Leveling",
+                        help="Anime title for clip mode (default: 'Solo Leveling')")
+    parser.add_argument("--stream", type=str, default=None,
+                        help="Optional stream or video URL to slice (HLS m3u8 or mp4)")
+    parser.add_argument("--start", type=str, default="00:02:00",
+                        help="Start timestamp for clip slice (default: '00:02:00')")
+    parser.add_argument("--duration", type=int, default=15,
+                        help="Clip duration in seconds (default: 15)")
+    parser.add_argument("--hook", type=str, default=None,
+                        help="Custom hook text for top overlay")
 
     args = parser.parse_args()
 
     if args.dry_run:
         Config.DRY_RUN = True
 
-    run_marketing_pipeline(
-        mode=args.mode,
-        max_posts=args.limit,
-        platforms=args.platform
-    )
+    if args.mode == "clip":
+        run_clip_pipeline(
+            anime_name=args.anime,
+            stream_url=args.stream,
+            start_time=args.start,
+            duration=args.duration,
+            hook_text=args.hook
+        )
+    else:
+        run_marketing_pipeline(
+            mode=args.mode,
+            max_posts=args.limit,
+            platforms=args.platform
+        )
 
 if __name__ == "__main__":
     main()

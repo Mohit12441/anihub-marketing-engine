@@ -51,6 +51,24 @@ anihub-marketing-engine/
 
 ---
 
+## 🎬 Viral 9:16 Clip & Video Short Generator
+
+Extract or generate 1080x1920 vertical video clips with ambient background motion blur, viral hook overlays, site CTA branding, and full SEO packages:
+
+```bash
+# Generate a viral short for any anime
+python main.py --mode clip --anime "Jujutsu Kaisen" --duration 15
+
+# Cut a specific highlight timestamp from an anime stream URL
+python main.py --mode clip --anime "Solo Leveling" --stream "https://your-stream.m3u8" --start "00:04:30" --duration 30
+```
+
+This will automatically create:
+1. `output/viral_short_<anime>.mp4`: 1080x1920 vertical video reel ready for TikTok, Instagram Reels, and YouTube Shorts.
+2. `output/seo_<anime>.txt`: Viral Title, Caption, dynamic deep link (`anihubstream.com/watch/<slug>`), and 15+ high-ranking SEO tags.
+
+---
+
 ## 🛠️ Local Quickstart
 
 ### 1. Clone & Install Dependencies

@@ -14,6 +14,11 @@ on:
         options:
           - trending
           - schedule
+          - clip
+      anime:
+        description: 'Anime Title (for clip mode)'
+        required: false
+        default: 'Solo Leveling'
       limit:
         description: 'Number of posts to publish'
         required: true
@@ -66,7 +71,12 @@ jobs:
         run: |
           MODE="${{ github.event.inputs.mode || 'trending' }}"
           LIMIT="${{ github.event.inputs.limit || '1' }}"
-          python main.py --mode "$MODE" --limit "$LIMIT"
+          ANIME="${{ github.event.inputs.anime || 'Solo Leveling' }}"
+          if [ "$MODE" = "clip" ]; then
+            python main.py --mode clip --anime "$ANIME" --duration 15
+          else
+            python main.py --mode "$MODE" --limit "$LIMIT"
+          fi
 
       # Save updated SQLite database to cache
       - name: Save Post History Cache
