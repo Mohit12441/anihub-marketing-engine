@@ -195,11 +195,16 @@ class ReelVideoBuilder:
             "-y",
             "-loop", "1",
             "-i", str(temp_frame),
+            "-f", "lavfi",
+            "-i", "sine=f=180:beep_factor=4:r=48000",
             "-c:v", "libx264",
+            "-c:a", "aac",
+            "-b:a", "192k",
             "-t", str(duration),
             "-vf", zoom_filter,
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
+            "-shortest",
             str(out_mp4)
         ]
 
