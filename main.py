@@ -127,30 +127,16 @@ def run_clip_pipeline(
     seo_data = ViralSEOGenerator.generate_seo_package(anime_name)
     hook = hook_text or seo_data["hook"]
     
-    # 2. Extract or Synthesize Raw Clip
+    # 2. Extract Real Anime Video Clip (With Audio & SFX)
     safe_slug = seo_data["slug"]
-    raw_clip = Config.OUTPUT_DIR / f"raw_{safe_slug}.mp4"
-    
-    if stream_url:
-        logger.info(f"Extracting live stream slice from: {stream_url}")
-        clip_source = StreamRecorder.extract_clip(
-            stream_source=stream_url,
-            start_time=start_time,
-            duration=duration,
-            output_filename=f"raw_{safe_slug}.mp4"
-        )
-    else:
-        logger.info("No stream URL provided. Searching top trending visual to synthesize clip...")
-        candidates = fetch_trending_anime(limit=5)
-        matched = next((c for c in candidates if safe_slug in c["title"].lower()), candidates[0])
-        clip_source = ReelVideoBuilder.generate_reel(
-            matched,
-            badge_text="VIRAL ANIME CLIP",
-            duration=duration,
-            filename=f"raw_{safe_slug}.mp4"
-        )
+    clip_source = StreamRecorder.get_real_anime_clip(
+        anime_title=anime_name,
+        stream_source=stream_url,
+        start_time=start_time,
+        duration=duration
+    )
 
-    # 3. Apply 9:16 Vertical Video Reframe with Ambient Blur & Overlays
+    # 3. Apply 9:16 Vertical Video Reframe with Ambient Blur, Clean Overlay & 192k Audio
     final_video = ClipEditor.process_vertical_clip(
         raw_clip_path=clip_source,
         anime_title=anime_name,
@@ -158,18 +144,22 @@ def run_clip_pipeline(
         output_filename=f"viral_short_{safe_slug}.mp4"
     )
 
-    # 4. Save SEO & Hashtag File
+    # 4. Save Comprehensive Viral SEO & Tag Package
     seo_file = Config.OUTPUT_DIR / f"seo_{safe_slug}.txt"
     with open(seo_file, "w", encoding="utf-8") as f:
-        f.write(f"=== YOUTUBE SHORTS / TIKTOK VIRAL PACKAGE ===\n\n")
-        f.write(f"TITLE: {seo_data['title']}\n\n")
-        f.write(f"CAPTION:\n{seo_data['caption']}\n\n")
-        f.write(f"TAGS: {seo_data['tags']}\n\n")
-        f.write(f"WATCH URL: {seo_data['watch_url']}\n")
+        f.write("=== YOUTUBE SHORTS / TIKTOK VIRAL SEO PACKAGE ===\n\n")
+        f.write(f"TITLES (Choose best variant):\n")
+        f.write(f"  • Primary: {seo_data['title_primary']}\n")
+        f.write(f"  • Alt 1:   {seo_data['title_alt_1']}\n")
+        f.write(f"  • Alt 2:   {seo_data['title_alt_2']}\n\n")
+        f.write("CAPTION (TikTok / Instagram Reels):\n")
+        f.write(f"{seo_data['caption']}\n\n")
+        f.write(f"TAGS (YouTube Shorts):\n{seo_data['tags']}\n\n")
+        f.write(f"PINNED COMMENT TEMPLATE:\n{seo_data['pinned_comment']}\n\n")
+        f.write(f"DIRECT TRACKED WATCH LINK:\n{seo_data['watch_url']}\n")
 
-    logger.info(f"✅ Viral Clip generated: {final_video}")
-    logger.info(f"✅ SEO & Tag package saved: {seo_file}")
-    logger.info(f"\n{seo_data['caption']}")
+    logger.info(f"✅ Real Video Clip with Audio generated: {final_video}")
+    logger.info(f"✅ Viral SEO Package saved: {seo_file}")
     return final_video, seo_file
 
 def main():

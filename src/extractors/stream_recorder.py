@@ -1,6 +1,7 @@
+import os
+import shutil
 import logging
 import subprocess
-import shutil
 from pathlib import Path
 from typing import Optional
 from ..config import Config
@@ -19,77 +20,89 @@ def _get_ffmpeg_path() -> str:
 
 class StreamRecorder:
     """
-    Extracts and slices high-definition video clips from anime stream sources
-    (HLS .m3u8, MP4, or web stream URLs) without downloading full episodes.
+    Extracts real anime video clips with full audio and sound effects
+    directly from stream sources or searches high-definition scene footage.
     """
 
+    @staticmethod
+    def _parse_seconds(time_str: str) -> int:
+        try:
+            parts = [int(p) for p in str(time_str).split(":")]
+            if len(parts) == 3:
+                return parts[0] * 3600 + parts[1] * 60 + parts[2]
+            elif len(parts) == 2:
+                return parts[0] * 60 + parts[1]
+            elif len(parts) == 1:
+                return parts[0]
+            return 15
+        except Exception:
+            return 15
+
     @classmethod
-    def extract_clip(
+    def get_real_anime_clip(
         cls,
-        stream_source: str,
-        start_time: str = "00:05:00",
-        duration: int = 30,
+        anime_title: str,
+        stream_source: Optional[str] = None,
+        start_time: str = "00:00:15",
+        duration: int = 15,
         output_filename: Optional[str] = None
     ) -> Path:
-        """
-        Slices a time-stamped highlight clip from a stream URL using yt-dlp & ffmpeg.
-        start_time format: "MM:SS" or "HH:MM:SS"
-        """
+        safe_title = "".join(c for c in anime_title if c.isalnum() or c in ("-", "_")).lower()[:18]
         if not output_filename:
-            output_filename = "raw_clip.mp4"
+            output_filename = f"raw_video_{safe_title}.mp4"
         out_path = Config.OUTPUT_DIR / output_filename
 
         ffmpeg_bin = _get_ffmpeg_path()
-        logger.info(f"Extracting {duration}s clip starting at {start_time} from stream...")
 
-        # If running in test/dry-run or if yt-dlp is invoked
-        try:
-            import yt_dlp
-            ydl_opts = {
-                "format": "best[height<=1080]/best",
-                "outtmpl": str(out_path),
-                "download_ranges": yt_dlp.utils.download_range_func(None, [(cls._parse_seconds(start_time), cls._parse_seconds(start_time) + duration)]),
-                "force_keyframes_at_cuts": True,
-                "quiet": True,
-                "no_warnings": True,
-                "ffmpeg_location": ffmpeg_bin
-            }
+        start_sec = cls._parse_seconds(start_time)
+        end_sec = start_sec + duration
+        section_str = f"*{start_sec}-{end_sec}"
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([stream_source])
-
-            if out_path.exists() and out_path.stat().st_size > 1000:
-                logger.info(f"Clip extracted successfully to: {out_path}")
-                return out_path
-        except Exception as e:
-            logger.warning(f"yt-dlp download failed: {e}. Attempting direct FFmpeg stream cut...")
-
-        # Fallback to direct FFmpeg seek slice
-        try:
+        # If a direct stream / HLS m3u8 source URL was provided
+        if stream_source:
+            logger.info(f"Extracting live stream slice ({start_time} to +{duration}s) from: {stream_source}")
             cmd = [
-                ffmpeg_bin,
-                "-y",
-                "-ss", start_time,
-                "-i", stream_source,
-                "-t", str(duration),
-                "-c", "copy",
-                "-movflags", "+faststart",
-                str(out_path)
+                "yt-dlp",
+                "--download-sections", section_str,
+                "-f", "bv*[height<=1080]+ba/b",
+                "--ffmpeg-location", ffmpeg_bin,
+                "-o", str(out_path),
+                "--force-keyframes-at-cuts",
+                stream_source
             ]
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if res.returncode == 0 and out_path.exists():
-                logger.info(f"FFmpeg direct stream slice saved to: {out_path}")
+                logger.info(f"Successfully sliced stream clip: {out_path}")
                 return out_path
-        except Exception as e:
-            logger.error(f"FFmpeg direct cut failed: {e}")
+            logger.warning(f"Stream cut failed: {res.stderr[:200]}. Falling back to clip search...")
 
-        raise RuntimeError(f"Could not extract video clip from source: {stream_source}")
+        # Automatic search for real high-definition action scene footage with full audio
+        search_query = f"ytsearch1:{anime_title} best fight scene 1080p"
+        logger.info(f"Searching and downloading real 1080p anime video footage for '{anime_title}' with audio...")
 
-    @staticmethod
-    def _parse_seconds(time_str: str) -> float:
-        parts = time_str.split(":")
-        if len(parts) == 3:
-            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-        elif len(parts) == 2:
-            return int(parts[0]) * 60 + float(parts[1])
-        return float(time_str)
+        cmd = [
+            "yt-dlp",
+            search_query,
+            "--download-sections", section_str,
+            "-f", "bv*[height<=1080]+ba/b",
+            "--ffmpeg-location", ffmpeg_bin,
+            "-o", str(out_path),
+            "--force-keyframes-at-cuts"
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        
+        # Check if downloaded as .webm or .mp4
+        if out_path.exists() and out_path.stat().st_size > 10000:
+            return out_path
+        
+        # yt-dlp might append .webm if webm format was selected
+        webm_fallback = Path(str(out_path) + ".webm")
+        if webm_fallback.exists() and webm_fallback.stat().st_size > 10000:
+            return webm_fallback
+
+        # Check any matching file in output
+        matches = list(Config.OUTPUT_DIR.glob(f"raw_video_{safe_title}*"))
+        if matches and matches[0].stat().st_size > 10000:
+            return matches[0]
+
+        raise RuntimeError(f"Could not download real anime video clip for '{anime_title}': {res.stderr[:300]}")
