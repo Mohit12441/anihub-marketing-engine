@@ -17,6 +17,7 @@ from src.fetchers.anilist import fetch_trending_anime, fetch_today_airing_anilis
 from src.fetchers.jikan import fetch_today_airing_schedule
 from src.generators.copywriter import ContentCopywriter
 from src.generators.graphic_builder import PromoGraphicBuilder
+from src.generators.video_builder import ReelVideoBuilder
 from src.publishers.instagram import InstagramPublisher
 from src.publishers.twitter import TwitterPublisher
 from src.utils.uploader import upload_public_image
@@ -58,11 +59,16 @@ def run_marketing_pipeline(mode: str = "trending", max_posts: int = 1, platforms
         logger.info(f"\nProcessing Candidate [{published_count + 1}/{max_posts}]: '{title}'")
 
         try:
-            # 2. Build Assets
+            # 2. Build Assets (Branded Graphic + 9:16 Video Reel)
             copy_bundle = ContentCopywriter.generate_copy(anime, post_type=mode)
             image_path = PromoGraphicBuilder.generate_poster(
                 anime,
                 badge_text=badge_text
+            )
+            video_path = ReelVideoBuilder.generate_reel(
+                anime,
+                badge_text=badge_text,
+                duration=8
             )
 
             # 3. Instagram Publishing

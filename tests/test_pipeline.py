@@ -7,6 +7,7 @@ from PIL import Image
 from src.database.tracker import StateTracker
 from src.generators.copywriter import ContentCopywriter, clean_slug
 from src.generators.graphic_builder import PromoGraphicBuilder
+from src.generators.video_builder import ReelVideoBuilder
 
 class TestMarketingPipeline(unittest.TestCase):
     
@@ -60,6 +61,21 @@ class TestMarketingPipeline(unittest.TestCase):
             
         if img_path.exists():
             img_path.unlink()
+
+    def test_video_builder(self):
+        mock_anime = {
+            "title": "Jujutsu Kaisen",
+            "score": 89,
+            "genres": ["Action", "Fantasy"],
+            "cover_url": None
+        }
+        # Render a short 1-second 1080x1920 test video
+        video_path = ReelVideoBuilder.generate_reel(mock_anime, duration=1, fps=15, filename="test_reel.mp4")
+        self.assertTrue(video_path.exists())
+        self.assertGreater(video_path.stat().st_size, 10000)
+        
+        if video_path.exists():
+            video_path.unlink()
 
 if __name__ == "__main__":
     unittest.main()
